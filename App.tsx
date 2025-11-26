@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Plus, Upload, Moon, Sun, Menu, 
   Trash2, Edit2, Loader2, Cloud, CheckCircle2, AlertCircle,
-  Pin, Settings, Lock, CloudCog
+  Pin, Settings, Lock, CloudCog, Github
 } from 'lucide-react';
 import { LinkItem, Category, DEFAULT_CATEGORIES, INITIAL_LINKS, WebDavConfig } from './types';
 import { parseBookmarks } from './services/bookmarkParser';
@@ -12,6 +12,7 @@ import AuthModal from './components/AuthModal';
 import CategoryManagerModal from './components/CategoryManagerModal';
 import BackupModal from './components/BackupModal';
 import CategoryAuthModal from './components/CategoryAuthModal';
+import ImportModal from './components/ImportModal';
 
 const LOCAL_STORAGE_KEY = 'cloudnav_data_cache';
 const AUTH_KEY = 'cloudnav_auth_token';
@@ -42,6 +43,7 @@ function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isCatManagerOpen, setIsCatManagerOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [catAuthModalData, setCatAuthModalData] = useState<Category | null>(null);
   
   const [editingLink, setEditingLink] = useState<LinkItem | undefined>(undefined);
@@ -50,8 +52,6 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [authToken, setAuthToken] = useState<string>('');
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   // --- Helpers & Sync Logic ---
 
   const loadFromLocal = () => {
@@ -198,34 +198,19 @@ function App() {
       }
   };
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!authToken) {
-        setIsAuthOpen(true);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        return;
-    }
-
-    try {
-      const { links: newLinks, categories: newCats } = await parseBookmarks(file);
-      
+  const handleImportConfirm = (newLinks: LinkItem[], newCategories: Category[]) => {
+      // Merge categories: Avoid duplicate names/IDs
       const mergedCategories = [...categories];
-      newCats.forEach(nc => {
-        if (!mergedCategories.find(c => c.name === nc.name)) {
-          mergedCategories.push(nc);
-        }
+      newCategories.forEach(nc => {
+          if (!mergedCategories.some(c => c.id === nc.id || c.name === nc.name)) {
+              mergedCategories.push(nc);
+          }
       });
 
       const mergedLinks = [...links, ...newLinks];
       updateData(mergedLinks, mergedCategories);
-      alert(`成功导入 ${newLinks.length} 个书签!`);
-    } catch (err) {
-      alert("导入失败，请确保是Chrome导出的HTML文件。");
-    }
-    
-    if (fileInputRef.current) fileInputRef.current.value = '';
+      setIsImportModalOpen(false);
+      alert(`成功导入 ${newLinks.length} 个新书签!`);
   };
 
   const handleAddLink = (data: Omit<LinkItem, 'id' | 'createdAt'>) => {
@@ -437,6 +422,14 @@ function App() {
         onSaveWebDavConfig={handleSaveWebDavConfig}
       />
 
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        existingLinks={links}
+        categories={categories}
+        onImport={handleImportConfirm}
+      />
+
       {/* Sidebar Mobile Overlay */}
       {sidebarOpen && (
         <div 
@@ -509,11 +502,10 @@ function App() {
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
-            <input type="file" ref={fileInputRef} className="hidden" accept=".html" onChange={handleImport} />
             
             <div className="grid grid-cols-2 gap-2 mb-2">
                 <button 
-                onClick={() => { if(!authToken) setIsAuthOpen(true); else fileInputRef.current?.click(); }}
+                onClick={() => { if(!authToken) setIsAuthOpen(true); else setIsImportModalOpen(true); }}
                 className="flex items-center justify-center gap-1 px-2 py-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 transition-all"
                 >
                 <Upload size={14} />
@@ -529,13 +521,24 @@ function App() {
                 </button>
             </div>
             
-            <div className="flex items-center justify-between text-xs text-slate-400 px-2 mt-2">
-               <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between text-xs px-2 mt-2">
+               <div className="flex items-center gap-1 text-slate-400">
                  {syncStatus === 'saving' && <Loader2 className="animate-spin w-3 h-3 text-blue-500" />}
                  {syncStatus === 'saved' && <CheckCircle2 className="w-3 h-3 text-green-500" />}
                  {syncStatus === 'error' && <AlertCircle className="w-3 h-3 text-red-500" />}
                  {authToken ? <span className="text-green-600">已同步</span> : <span className="text-amber-500">离线</span>}
                </div>
+
+               <a 
+                 href="https://github.com/maodeyu180/mao_nav" 
+                 target="_blank" 
+                 rel="noopener noreferrer"
+                 className="flex items-center gap-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                 title="Fork this project on GitHub"
+               >
+                 <Github size={14} />
+                 <span>Github</span>
+               </a>
             </div>
         </div>
       </aside>
